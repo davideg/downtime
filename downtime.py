@@ -5,6 +5,7 @@ if sys.version_info[0] < 3:
 
 import argparse
 import datetime
+import faulthandler
 import logging
 import re
 import subprocess
@@ -204,6 +205,7 @@ def _setup_logging(level):
 
 
 if __name__ == '__main__':
+    faulthandler.enable()
     parser = argparse.ArgumentParser()
     parser.add_argument(
             '-d', '--debug', action='store_true', help='print debug messages')
