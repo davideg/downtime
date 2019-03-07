@@ -163,11 +163,13 @@ class ThatWhichNags(object):
 
     def stop_listeners(self):
         logging.debug('Stopping mouse and keyboard listeners')
-        self._should_end.set()
-        self.m_listener.stop()
-        self.kb_listener.stop()
-        self.m_listener.join()
-        self.kb_listener.join()
+        try:
+            self._should_end.set()
+            self.m_listener.stop()
+            self.kb_listener.stop()
+        finally:
+            self.m_listener.join()
+            self.kb_listener.join()
 
 def run():
     twn = ThatWhichNags(NAGS)
