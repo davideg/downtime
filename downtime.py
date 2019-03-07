@@ -137,6 +137,7 @@ class ThatWhichNags(object):
         i = min(self.dialog_count, len(self.nags) - 1)
         logging.debug('Using nag {}'.format(i))
         self.dialog_count += 1
+        pressed_button = ''
         no_user_response = True
         while no_user_response and not self._should_end.is_set():
             pressed_button, no_user_response = ThatWhichNags._dialog(
