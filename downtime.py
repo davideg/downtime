@@ -13,7 +13,8 @@ if sys.version_info[0] < 3:
 
 START_TIME = datetime.time(22, 30) # 10:30pm
 END_TIME = datetime.time(6, 30) # 6:30am
-INTERVAL_SEC = 60 # 1 minute
+CHECK_INTERVAL_SEC = 60 # 1 minute
+IGNORE_ACTION_INTERVAL_SEC = 3
 #EXTRA_TIME = 60 * 5 # 5 minutes
 EXTRA_TIME = 60 * 2 # 2 minutes
 DISABLE_WIFI_CMD = 'networksetup -setairportpower en0 off'
@@ -66,7 +67,7 @@ class ThatWhichNags(object):
         self.dialog_count = 0
         self.nags = nags
         self.extra_time = extra_time
-        self._ignore_action_interval = 3
+        self._ignore_action_interval = IGNORE_ACTION_INTERVAL_SEC
         self._last_action = None
         self.m_listener = pynput.mouse.Listener(
                 on_move=self._on_action_handler('on_move'),
@@ -122,25 +123,26 @@ class ThatWhichNags(object):
         logging.debug('User clicked: "{}" button'.format(pressed_button))
         if pressed_button == 'OK':
             # Give user time to perform one last action
+            logging.debug('Sleeping 5 seconds')
             time.sleep(5)
         else:
+            logging.debug('Extra time: sleeping {} seconds'.format(
+                self.extra_time))
             time.sleep(self.extra_time)
             # start nags over again
             self.dialog_count = 0
 
     def start_listeners(self):
+        logging.debug('Starting mouse and keyboard listeners')
         self.m_listener.start()
         self.kb_listener.start()
-        try:
-            self.m_listener.join()
-            self.kb_listener.join()
-        finally:
-            self.m_listener.stop()
-            self.kb_listener.stop()
 
     def stop_listeners(self):
+        logging.debug('Stopping mouse and keyboard listeners')
         self.m_listener.stop()
         self.kb_listener.stop()
+        self.m_listener.join()
+        self.kb_listener.join()
 
 def run():
     twn = ThatWhichNags(NAGS)
@@ -162,7 +164,7 @@ def run():
                     in_downtime = False
                     enable_wifi()
                     twn.stop_listeners()
-            time.sleep(INTERVAL_SEC)
+            time.sleep(CHECK_INTERVAL_SEC)
     except KeyboardInterrupt:
         logging.info('Stopping downtime checking')
         if in_downtime:
@@ -172,7 +174,8 @@ def run():
 
 def _setup_logging(level):
     logging.basicConfig(
-            format='%(asctime)s - %(levelname)s - %(message)s',
+            format='%(asctime)s - %(threadName)s - %(levelname)s' \
+                    ' - %(message)s',
             level=level)
 
 
