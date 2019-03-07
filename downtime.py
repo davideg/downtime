@@ -102,10 +102,11 @@ class ThatWhichNags(object):
                     self.nag()
                     self._last_action = time.time()
                 else:
-                    logging.debug('Remaining seconds until next possible nag:'
-                            ' {}'.format(
-                                IGNORE_ACTION_INTERVAL_SEC
-                                - (time.time() - self._last_action)))
+                    if len(args) == 1 and args[0] == pynput.keyboard.Key.shift:
+                        logging.debug('Remaining seconds'
+                                ' until next possible nag: {}'.format(
+                                    IGNORE_ACTION_INTERVAL_SEC
+                                    - (time.time() - self._last_action)))
         return _on_action
 
     @classmethod
