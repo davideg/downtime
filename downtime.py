@@ -1,29 +1,36 @@
+import sys
+
+if sys.version_info[0] < 3:
+    sys.exit('ERROR: only python 3 supported')
+
 import argparse
 import datetime
 import logging
 import re
 import subprocess
-import sys
 import time
 
 import pynput
 
-if sys.version_info[0] < 3:
-    sys.exit('ERROR: only python 3 supported')
+from threading import Event, Lock
 
 START_TIME = datetime.time(22, 30) # 10:30pm
 END_TIME = datetime.time(6, 30) # 6:30am
 CHECK_INTERVAL_SEC = 60 # 1 minute
 IGNORE_ACTION_INTERVAL_SEC = 3
+LAST_ACTION_SEC = 5
 #EXTRA_TIME = 60 * 5 # 5 minutes
 EXTRA_TIME = 60 * 2 # 2 minutes
 DISABLE_WIFI_CMD = 'networksetup -setairportpower en0 off'
 ENABLE_WIFI_CMD = 'networksetup -setairportpower en0 on'
+DIALOG_TIMEOUT = 5
 DIALOG_CMD = 'osascript -e $\'Tell application "System Events"' \
         ' to display dialog "{msg}" with title "{title}"' \
+        ' giving up after ' + str(DIALOG_TIMEOUT) + \
         ' buttons {{"OK"}} default button "OK"\''
 DIALOG_CMD2 = 'osascript -e $\'Tell application "System Events"' \
         ' to display dialog "{msg}" with title "{title}"' \
+        ' giving up after ' + str(DIALOG_TIMEOUT) + \
         ' buttons {{"OK", "{button}"}} default button "OK"\''
 NAGS = [
         ('You\\\'re in downtime! Take a break from the computer <3',
@@ -67,8 +74,9 @@ class ThatWhichNags(object):
         self.dialog_count = 0
         self.nags = nags
         self.extra_time = extra_time
-        self._ignore_action_interval = IGNORE_ACTION_INTERVAL_SEC
         self._last_action = None
+        self._should_end = Event()
+        self._threadlock = Lock()
         self.m_listener = pynput.mouse.Listener(
                 on_move=self._on_action_handler('on_move'),
                 on_click=self._on_action_handler('on_click'),
@@ -78,17 +86,25 @@ class ThatWhichNags(object):
 
     def _on_action_handler(self, name):
         def _on_action(*args):
-            if not self._last_action:
-                logging.debug('Got action from {}'.format(name))
-                self.nag()
-            elif time.time() - self._last_action \
-                    > self._ignore_action_interval:
-                logging.debug('Got action from {}'.format(name))
-                logging.debug('It has been more than {} seconds'
-                        ' since last dialog'.format(
-                            self._ignore_action_interval))
-                self.nag()
-            self._last_action = time.time()
+            with self._threadlock:
+                if not self._last_action:
+                    logging.debug('First time nagging')
+                    logging.debug('Got action from {}'.format(name))
+                    self.nag()
+                    self._last_action = time.time()
+                elif (time.time() - self._last_action
+                        > IGNORE_ACTION_INTERVAL_SEC):
+                    logging.debug('Got action from {}'.format(name))
+                    logging.debug('It has been more than {} seconds'
+                            ' since last dialog'.format(
+                                IGNORE_ACTION_INTERVAL_SEC))
+                    self.nag()
+                    self._last_action = time.time()
+                else:
+                    logging.debug('Remaining seconds until next possible nag:'
+                            ' {}'.format(
+                                IGNORE_ACTION_INTERVAL_SEC
+                                - (time.time() - self._last_action)))
         return _on_action
 
     @classmethod
@@ -108,37 +124,44 @@ class ThatWhichNags(object):
                 encoding='utf-8')
         if p.returncode != 0:
             logging.error('Error generating nag dialog: {}'.format(p.stderr))
-        m = re.match('button returned:(.*)', p.stdout)
+        m = re.match('button returned:(.*), gave up:(.*)', p.stdout)
         if m is None:
             logging.error('Could not extract result of button click')
-        return m.group(1) if m is not None else ''
-
+        return (m.group(1), m.group(2) == 'true') if m is not None \
+                else ('', False)
 
     def nag(self):
         logging.debug('dialog_count: {}'.format(self.dialog_count))
         i = min(self.dialog_count, len(self.nags) - 1)
         logging.debug('Using nag {}'.format(i))
         self.dialog_count += 1
-        pressed_button = ThatWhichNags._dialog(*self.nags[i])
+        no_user_response = True
+        while no_user_response and not self._should_end.is_set():
+            pressed_button, no_user_response = ThatWhichNags._dialog(
+                    *self.nags[i])
         logging.debug('User clicked: "{}" button'.format(pressed_button))
         if pressed_button == 'OK':
             # Give user time to perform one last action
-            logging.debug('Sleeping 5 seconds')
-            time.sleep(5)
+            logging.debug('Sleeping {} seconds'.format(LAST_ACTION_SEC))
+            self._should_end.wait(LAST_ACTION_SEC)
+            logging.debug('Done sleeping')
         else:
             logging.debug('Extra time: sleeping {} seconds'.format(
                 self.extra_time))
-            time.sleep(self.extra_time)
+            self._should_end.wait(self.extra_time)
+            logging.debug('Done sleeping')
             # start nags over again
             self.dialog_count = 0
 
     def start_listeners(self):
         logging.debug('Starting mouse and keyboard listeners')
+        self._should_end.clear()
         self.m_listener.start()
         self.kb_listener.start()
 
     def stop_listeners(self):
         logging.debug('Stopping mouse and keyboard listeners')
+        self._should_end.set()
         self.m_listener.stop()
         self.kb_listener.stop()
         self.m_listener.join()
@@ -167,6 +190,7 @@ def run():
             time.sleep(CHECK_INTERVAL_SEC)
     except KeyboardInterrupt:
         logging.info('Stopping downtime checking')
+    finally:
         if in_downtime:
             logging.info('Restoring wifi')
             enable_wifi()
