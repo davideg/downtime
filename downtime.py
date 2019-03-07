@@ -109,29 +109,6 @@ class ThatWhichNags(object):
                                     - (time.time() - self._last_action)))
         return _on_action
 
-    @classmethod
-    def _dialog(cls, msg, title, button=None):
-        logging.debug('Creating dialog "{}": {}'.format(title, msg))
-        cmd = DIALOG_CMD
-        if button:
-            logging.debug('Creating dialog with additional button: {}'.format(
-                button))
-            cmd = DIALOG_CMD2
-        cmd_str = cmd.format(msg=msg, title=title, button=button)
-        logging.debug('Running command: {}'.format(cmd_str))
-        p = subprocess.run(
-                cmd_str,
-                shell=True,
-                capture_output=True,
-                encoding='utf-8')
-        if p.returncode != 0:
-            logging.error('Error generating nag dialog: {}'.format(p.stderr))
-        m = re.match('button returned:(.*), gave up:(.*)', p.stdout)
-        if m is None:
-            logging.error('Could not extract result of button click')
-        return (m.group(1), m.group(2) == 'true') if m is not None \
-                else ('', False)
-
     def nag(self):
         logging.debug('dialog_count: {}'.format(self.dialog_count))
         i = min(self.dialog_count, len(self.nags) - 1)
@@ -155,6 +132,29 @@ class ThatWhichNags(object):
             logging.debug('Done sleeping')
             # start nags over again
             self.dialog_count = 0
+
+    @staticmethod
+    def _dialog(msg, title, button=None):
+        logging.debug('Creating dialog "{}": {}'.format(title, msg))
+        cmd = DIALOG_CMD
+        if button:
+            logging.debug('Creating dialog with additional button: {}'.format(
+                button))
+            cmd = DIALOG_CMD2
+        cmd_str = cmd.format(msg=msg, title=title, button=button)
+        logging.debug('Running command: {}'.format(cmd_str))
+        p = subprocess.run(
+                cmd_str,
+                shell=True,
+                capture_output=True,
+                encoding='utf-8')
+        if p.returncode != 0:
+            logging.error('Error generating nag dialog: {}'.format(p.stderr))
+        m = re.match('button returned:(.*), gave up:(.*)', p.stdout)
+        if m is None:
+            logging.error('Could not extract result of button click')
+        return (m.group(1), m.group(2) == 'true') if m is not None \
+                else ('', False)
 
     def start_listeners(self):
         logging.debug('Starting mouse and keyboard listeners')
