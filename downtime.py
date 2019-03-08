@@ -7,6 +7,7 @@ import argparse
 import datetime
 import faulthandler
 import logging
+import os
 import re
 import subprocess
 import time
@@ -43,6 +44,10 @@ NAGS = [
                 ' Or do you really need some more time?',
             'It is now Downtime', 'Just a little more time')
         ]
+
+LOG_FORMAT = '%(asctime)s - %(threadName)s - %(levelname)s - %(message)s'
+LOG_DIR = '/var/log/downtime'
+LOG_FILENAME = 'downtime.log'
 
 
 def is_downtime(now=None):
@@ -201,11 +206,17 @@ def run():
             enable_wifi()
             twn.stop_listeners()
 
-def _setup_logging(level):
+def _setup_logging(level, log_to_file=False):
+    handlers = [logging.StreamHandler()]
+    if log_to_file:
+        if not os.path.exists(LOG_DIR):
+            os.makedirs(LOG_DIR)
+        handlers.append(logging.FileHandler(
+            '{}/{}'.format(LOG_DIR, LOG_FILENAME)))
     logging.basicConfig(
-            format='%(asctime)s - %(threadName)s - %(levelname)s' \
-                    ' - %(message)s',
-            level=level)
+            format=LOG_FORMAT,
+            level=level,
+            handlers=handlers)
 
 
 if __name__ == '__main__':
@@ -213,9 +224,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
             '-d', '--debug', action='store_true', help='print debug messages')
+    parser.add_argument(
+            '-l', '--log-file', action='store_true',
+            help='Store log as a file')
     args = parser.parse_args()
     log_level = logging.INFO
     if args.debug:
         log_level = logging.DEBUG
-    _setup_logging(log_level)
+    _setup_logging(log_level, log_to_file=args.log_file)
     run()
